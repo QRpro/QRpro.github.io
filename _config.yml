@@ -1,0 +1,96 @@
+# Site settings
+title: Neil Blog
+SEOTitle: 秦睿的博客 | Neil Blog
+header-img: img/post-bg-apple-event-2015.jpg
+email: neil.r.qin@gmail.com
+description: "关于个人成长 | 秦睿，JAVA Engineer，UED Designer | 这里是 @Neil秦睿 的个人博客，走在优秀程序员的路上。"
+keyword: ""
+url: "https://qrpro.github.io/"              # your host, for absolute URL
+baseurl: ""                             # for example, '/blog' if your blog hosted on 'host/blog'
+
+
+
+# SNS settings
+RSS: false
+weibo_username:     
+zhihu_username:     
+#github_username:    
+#twitter_username:   
+#facebook_username:  huxpro
+# linkedin_username:  firstname-lastname-idxxxx
+
+
+
+# Build settings
+# from 2016, 'pygments' is unsupported on GitHub Pages. Use 'rouge' for highlighting instead.
+highlighter: rouge
+permalink: pretty
+paginate: 10
+exclude: ["less","node_modules","Gruntfile.js","package.json","README.md","README.zh.md"]
+anchorjs: true                          # if you want to customize anchor. check out line:181 of `post.html`
+
+
+
+# Gems
+# from PR#40, to support local preview for Jekyll 3.0
+gems: [jekyll-paginate]
+
+
+
+# Markdown settings
+# replace redcarpet to kramdown,
+# although redcarpet can auto highlight code, the lack of header-id make the catalog impossible, so I switch to kramdown
+# document: http://jekyllrb.com/docs/configuration/#kramdown
+markdown: kramdown
+kramdown:
+  input: GFM                            # use Github Flavored Markdown !important
+
+
+
+# Disqus settings
+disqus_username: disqus_pTXqNN3gqh
+
+# Netease setttings
+netease_comment: true
+
+# Duoshuo settings
+#duoshuo_username: 
+# Share component is depend on Comment so we can NOT use share only.
+#duoshuo_share:                    # set to false if you want to use Comment without Sharing
+
+
+
+
+# Analytics settings
+# Baidu Analytics 
+# ba_track_id: [your track id]
+
+# Google Analytics
+ga_track_id: ''            # Format: UA-xxxxxx-xx
+ga_domain: 
+
+
+
+# Sidebar settings
+sidebar: true                           # whether or not using Sidebar.
+sidebar-about-description: "撑下去才有了后来的一切，<br>热爱生活、享受生活"
+sidebar-avatar: /img/neil.jpg      # use absolute URL, seeing it's used in both `/` and `/about/`
+
+
+
+# Featured Tags
+featured-tags: true                     # whether or not using Feature-Tags
+featured-condition-size: 1              # A tag will be featured if the size of it is more than this condition value
+
+
+
+# Progressive Web Apps
+chrome-tab-theme-color: "#000000"
+service-worker: true
+
+
+
+# Friends
+friends: [
+   
+]
