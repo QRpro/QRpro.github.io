@@ -1,15 +1,20 @@
 ---
 layout:     post
 title:      " 如何更优雅的撸码?! "
-subtitle:   "持续更新ing"
+subtitle:   "持续更新..."
 date:       2017-06-25 
 header-img: "img/post-bg-tips.jpg"
+catalog:    true
 author:     "Neil"
 tags:
     - Tips
 ---  
 
 
+## 写在前面的话
+> 本文是个人在学习、工作中发现的一点小技巧，个人觉得不错就贴上来了。  
+> 如果哪里描述的不准确请及时与我联系更正！  
+> 本文持续保持更新！  
 
 ## 目录  
 1.  [返回空集合](#empty)
@@ -25,57 +30,59 @@ tags:
 
 ## 详细描述
 
-<p id='empty'>  
+<span id='empty'> 
+**1. 在返回Collection中有可能为空时请返回**
 
-* 在返回Collection中有可能为空时请返回
-{% highlight java %}
+```java
 Collections.emptyList();
 Collections.emptyMap();
 Collections.emptySet();
-{% endhighlight %}
+```
 
-<p id='listTorow'>
-* 在查询中如果多个值分开获取后进行统计请尝试使用行转列思维
-{% highlight sql %}
+<span id='listTorow'>
+**2. 在查询中如果多个值分开获取后进行统计请尝试使用行转列思维**
+
+```sql
 SELECT Date,
 MAX(CASE 列名 WHEN 列值 THEN XX ELSE 0 END ) 别名,
 MAX(CASE 列名 WHEN 列值 THEN XX ELSE 0 END ) 别名 
 FROM TabName  
 GROUP BY Date
-{% endhighlight %}
+```
 
 
-<p id='abbreviation'>
-* 下面是用于创建缩写的原则(来自编码大全)：
+<span id='abbreviation'>
+**3. 下面是用于创建缩写的原则(来自编码大全)：**
 
-<br>1. 使用标准缩写（列在字典中的常见缩写）  
-<br>2. 去掉所有非前置元音(computer->cmptr，screen->scrn，apple->appl，integer->intgr)  
-<br>3. 去掉虚词(and,or,the)  
-<br>4. 使用第一个或前几个字母  
-<br>5. 保留每个单词第一个和最后一个字母  
-<br>6. 去除无用的后缀--ing,ed等  
-<br>7. 保留每个音节中最引人注意的发音  
-<br>8. 基于发音来缩写(skating->sk8ing，before->b4,execute->xqt)  
+1.使用标准缩写（列在字典中的常见缩写）  
+2.去掉所有非前置元音(computer->cmptr，screen->scrn，apple->appl，integer->intgr)  
+3.去掉虚词(and,or,the)  
+4.使用第一个或前几个字母  
+5.保留每个单词第一个和最后一个字母  
+6.去除无用的后缀 --ing,ed等  
+7.保留每个音节中最引人注意的发音  
+8.基于发音来缩写(skating->sk8ing，before->b4,execute->xqt)  
 
-<p id='iteratorMap'>
-* 遍历Map尽量使用EntryMap
-<br>keySet其实是遍历了2次，一次是转为Iterator对象，另一次是从hashMap中取出key所对应的value。而entrySet只是遍历了一次就把key和value都放到了entry中，效率更高。如果是JDK8，使用Map.foreach方法。当然如果你只取key的话请使用keyset
-{% highlight java %}
+<span id='iteratorMap'>
+**4. 遍历Map尽量使用EntryMap**
+
+keySet其实是遍历了2次，一次是转为Iterator对象，另一次是从hashMap中取出key所对应的value。而entrySet只是遍历了一次就把key和value都放到了entry中，效率更高。如果是JDK8，使用Map.foreach方法。当然如果你只取key的话请使用keyset
+```java
 public void foreachMap(){
-	Map<String , String > out = new HashMap<String, String>();
-	for (Map.Entry<String, String> empty : out.entrySet()) {
+	Map<String , String **out = new HashMap<String, String>();
+	for (Map.Entry<String, String**empty : out.entrySet()) {
 		String key = empty.getKey();
 		String value = empty.getValue();
 	}
 }
-{% endhighlight %}
+```
 
-<p id='return'>
-* 在返回有遇到大于两个true返回
-在开发中难免会遇到这种情况，给3个布尔变量，当其中有2个或者2个以上为true才返回true，请使用下面这种写法
+<span id='return'>
+**5. 在返回有遇到大于两个true返回**
 
+在开发中难免会遇到这种情况，给3个布尔变量，当其中有2个或者2个以上为true才返回true，请使用下面这种写法  
 最笨的写法：
-{% highlight java %}
+```java
 boolean atLeastTwo(boolean a, boolean b, boolean c) 
 {
     if ((a && b) || (b && c) || (a && c)) 
@@ -87,28 +94,30 @@ boolean atLeastTwo(boolean a, boolean b, boolean c)
         return false;
     }
 }
-{% endhighlight %}
+```
 请使用下方写法：
-{% highlight java %}
+```java
 return (a==b) ? a : c;
 OR
 return a ^ b ? c : a;
-{% endhighlight %}
-<p id='chongfujisuan'>
+```
+<span id='chongfujisuan'>
 
-*  尽量减少对变量的重复计算
-{% highlight java %}
+**6. 尽量减少对变量的重复计算**
+
+```java
 for (int i = 0; i < list.size(); i++)
 {...}
 建议替换为
 for (int i = 0, length = list.size(); i < length; i++)
 {...}
-{% endhighlight %}
+```
 
-<p id='objectref'>
-* 循环内不要不断创建对象引用
+<span id='objectref'>
+**7. 循环内不要不断创建对象引用**
+
 这种做法会导致内存中有n份Object对象引用存在，n很大的话，就耗费内存了，建议为改为
-{% highlight java %}
+```java
 for (int i = 1; i <= n; i++){
 	Object obj = new Object();
 }
@@ -117,11 +126,12 @@ Object obj = null;
 for (int i = 0; i <= count; i++) { 
 	obj = new Object(); 
 }
-{% endhighlight %}
+```
 
-<p id='strequals'>
-* 字符串常量equals的时候写在前面
-{% highlight java %}
+<span id='strequals'>
+**8. 字符串常量equals的时候写在前面**
+
+```java
 String str = "123";
 if (str.equals("123")) {
 	...
@@ -131,29 +141,31 @@ String str = "123";
 if ("123".equals(str)){
 	...
 }
-{% endhighlight %}
+```
 
 
-<p id='count'>
-* Mysql中count(*)与count(1)
-count( * )与count(1)并没有什么不同并不是count( * )会采用全表扫描通过通过
+<span id='count'>
+**9. Mysql中count(*)与count(1)**
 
-{% highlight sql %}
+`count(*)`与`count(1)`并没有什么不同并不是`count(*)`会采用全表扫描通过通过
+
+```java
 EXPLAIN SELECT COUNT(*) FROM `user`;
 EXPLAIN SELECT COUNT(1) FROM `user`;
 EXPLAIN SELECT COUNT(ID) FROM `user`;
-{% endhighlight %}
+```
 
 以上SQL执行结果如下
-![count( * )](img/tips/count.png)  
+![img](/img/tips/count.png)  
 
-<p id='sumexpr'>
- SQL中的SUM(expr)
+<span id='sumexpr'>
 
-{% highlight sql %}
+**10. SQL中的 SUM(expr)**
+
+```sql
 SELECT SUM(ID>1000) FROM `user`;
-SELECT COUNT(*) FROM user WHERE ID > '1000';
-{% endhighlight %}
+SELECT COUNT(*) FROM user WHERE ID **'1000';
+```
 
 具体效率细节如下
 
@@ -161,9 +173,9 @@ SELECT COUNT(*) FROM user WHERE ID > '1000';
 
 ![sqlsum-1](/img/tips/sqlsum-2.png)
 
-可见带where字句的扫描了更少的行，但在数据量较小时使用SUM(expr)更加方便<br>
+可见带where字句的扫描了更少的行，但在数据量较小时使用SUM(expr)更加便捷
 
 
 ---
 
-—— Neil 2015.06
+— Neil 最后编辑与 2015.06
