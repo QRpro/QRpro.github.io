@@ -1,7 +1,8 @@
 ---
 layout: post
 title:  "Welcome to Neil Blog!"
-date:   2017-06-22 09:12:13 +0800
+subtitle:   " \"Hello World, Hello Blog\""
+date:   2017-06-22 09:12:13 
 header-img: "img/post-bg-e2e-ux.jpg"
 author:     "Neil"
 catalog: true
