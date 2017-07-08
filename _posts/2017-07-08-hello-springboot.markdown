@@ -12,23 +12,24 @@ tags:
 ---  
 
 ## 写在前面的话
-　　最近在公众号推送以及很多地方总能看到许多人说公司在大力推Spring Boot，作为一个对技术敏感的骚年怎么能不心动呢，所以就花了一周时间简单了解了下，本篇内容作为spring Boot的初探，仅仅做对spring Boot不了解的人做一个科普，然后做一下简单的Demo，更深入的知识博主正在努力挖掘中…如果你对Spring有一定了解的话那我们直接[进入正题](#springboot)
+　　最近在公众号推送以及很多地方总能看到许多人说公司在大力推Spring Boot，作为一个对技术敏感的骚年怎么能不心动呢，所以就花了一周时间简单了解了下，本篇内容作为spring Boot的初探，仅仅做对spring Boot不了解的人做一个科普，然后做一下简单的Demo，更深入的知识博主正在努力挖掘中…   
+如果你对Spring有一定了解的话那我们直接跳过简史直接[进入正题](#springboot)
 
 ## Spring 简史
 ### Spring 的三个阶段
 **第一阶段：xml配置**  
-spring1.x时代，使用spring开发都是xml配置的bean 随着项目的扩展，需要将xml配置文件放在不同的配置文件中，需要平凡的在java代码和xml之间切换  
+spring1.x时代，使用spring开发都是xml配置的bean 随着项目的扩展，需要将xml配置文件放在不同的配置文件中，需要p频繁的在java代码和xml之间切换  
 **第二阶段：注解配置**  
 spring2.x时代，JDK1.5支持注解，spring提供声明bean注解（@Controller，@Service等），大大减少了配置量，最终妥协为基本配置（如数据库配置）用xml，业务配置使用注解  
 **第三阶段：java配置**  
 从spring3.x到现在，spring 提供了java配置能力，并且spring4.0和spring Boot都推荐使用java配置。  
 **举个栗子**  
-java配置是通过@Configuration和@Bean来实现的。  
+java配置是通过`@Configuration`和`@Bean`来实现的。  
 @Configuration声明当前类是一个配置类，相当于Spring配置的xml文件  
 @Bean 注解在方法升，声明当前方法的返回值作为一个Bean  
-下图就是分页插件PageHelper的java配置方式
+下图就是分页插件PageHelper的Java配置方式
 ![img](/img/springboot/java-configuration.png)  
-这就相当于在`mybatis-config.xml`中配置,并在Spring配置中配置`sqlSessionFactory`的时候引入配置文件`mybatis-config.xml`, 是不是感觉java配置非常便捷
+这就相当于在`mybatis-config.xml`中进行配置,并在Spring配置中配置`sqlSessionFactory`的时候引入配置文件`mybatis-config.xml`, 是不是感觉java配置非常便捷
 
 
 ## Spring Boot
