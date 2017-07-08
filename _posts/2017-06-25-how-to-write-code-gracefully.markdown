@@ -27,6 +27,7 @@ tags:
 8.  [字符串常量equals的时候写在前面](#strequals)
 9.  [COUNT(*)与COUNT(1)](#count)
 10. [SQL中的SUM(expr)](#sumexpr)
+11. [考虑使用构建器](#builder_pattern)
 
 ## 详细描述
 
@@ -106,11 +107,9 @@ return a ^ b ? c : a;
 **6. 尽量减少对变量的重复计算**
 
 ```java
-for (int i = 0; i < list.size(); i++)
-{...}
+for (int i = 0; i < list.size(); i++){...}
 建议替换为
-for (int i = 0, length = list.size(); i < length; i++)
-{...}
+for (int i = 0, length = list.size(); i < length; i++){...}
 ```
 
 <span id='objectref'>
@@ -176,6 +175,18 @@ SELECT COUNT(*) FROM user WHERE ID **'1000';
 可见带where字句的扫描了更少的行，但在数据量较小时使用SUM(expr)更加便捷
 
 
+<span id='builder_pattern'>
+**11. 遇到多个构造器参数时要考虑用构建器**
+
+在日常开发过程中经常会用到大量的可选参数的类，比如食品营养标签，这些标签中有部分是必须的，有大部分是可选的，这样的类如果采用重叠构造器或者javaBeans模式来设置必要参数和可选参数，当构造器入参顺序不一致时极易出错，使用javaBeans又存在以下缺点： 一但调用构造函数后，对象就被创建了，以后在调用 set 方法设置属性的时候这里设置一下，其他地方又设置一下，无法保证对象的状态一致性，而且代码的可读性很差，那么如何解决上述问题呢？这里可以考虑使用构建器，具体代码如下：
+![img](/img/tips/builder-method.png)
+调用时我们可以采用如下形式
+```java
+NutritionFaces cocaCola = new NutritionFaces.Builder(240, 8).calories(100).carbohydrate(35).build();
+```
+来构建我们的对象，注意NutritionFaces是不可变的，所有的默认参数值都放在一个地方。方法返回builder本身，可以很方便的使用链式编程。
+
+
 ---
 
-— Neil 最后编辑与 2017.06
+— Neil 最后编辑于 2017.07.08
