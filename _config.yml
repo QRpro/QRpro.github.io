@@ -1,7 +1,7 @@
 # Site settings
 title: Neil Blog
 SEOTitle: 秦睿的博客 | Neil Blog
-header-img: img/bg-hello-neil-bolgr.jpg
+header-img: img/bg-hello-neil-bolgr.jpg 
 email: neil.r.qin@gmail.com
 description: "关于个人成长 | 秦睿，JAVA Engineer，UED Designer | 这里是 @Neil秦睿 的个人博客，走在优秀程序员的路上。"
 keyword: ""
