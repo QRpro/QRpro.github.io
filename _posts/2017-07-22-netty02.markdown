@@ -1,0 +1,228 @@
+---
+layout:     post
+title:      " Netty-源码分析"
+subtitle:   "关于Netty这篇文章就够了..."
+date:       2017-07-22 
+header-img: "img/netty-bg-01.jpg"
+catalog:    true
+author:     "Neil"
+tags:
+    - 网络编程
+    - Java
+---  
+
+## 写在前面的话
+　　本文是博主之前学习Netty时为了方便他人学习及日后翻阅，整理撰写的学习笔记一直放在公司SVN服务器上，后来博客搭建起来了，今天准备将内容重新整理然后发布上来，在学习过程中如在文中发现不明确或者不正确的地方望及时指正，由于原文比较长有差不多40页，所以分成了两部分进行撰写第一部分在这里 [Netty-01快速入门](http://neilqin.me/2017/07/22/netty01/)  
+　　<span id='down'>
+本文示例代码及PDF文档可以点击这里[下载](https://github.com/QRpro/netty-demo)  
+　　
+## Netty简单源码及流程分析
+### ByteBuf
+　　在了解Netty中的ByteBuf之前，先了解一下javaNIO包下的ByteBuffer，ByteBuffer有一下几个不足之处  
+- ByteBuffer长度固定，一旦分配完成，它的容量不能动态扩展和收缩，当需要编码的POJO 对象大于ByteBuffer的容量时，会发生索引越界异常；
+- ByteBuffer只有一个标识位置的指针Position，读写的时候需要手工调用flip()和rewind()等，使用起来较为繁琐，容错率低很容易因为细节忽略而导致程序失败。
+- API功能有限。  
+
+
+#### 动态扩容  
+既然有这么多缺点，接下来对Netty的ByteBuf进行简单说明，看一下Bytebuf是如何实现动态扩容。
+![img](/img/blogarticles/Netty02/write-byte.png)  
+![img](/img/blogarticles/Netty02/ensure-writable.png)    
+
+这里与集合类扩容原理相似，当进行write操作时，会对需要的write字节进行校验，如果可写的字节数小于需要写入的字节数，并且需要写入字节数小于可写的最大字节数时就对缓冲区进行动态扩容。
+	再看计算容量方法也就是`calculateNewCapacity(writerIndex + minWritableBytes)`方法
+
+![img](/img/blogarticles/Netty02/calculate-now-capacity.png)   
+
+首先判断当前传入的大小是否小于64，否则就返回64，如果大于64且小于`threadshould` 就每次增大2倍。否则就每次添加4m或者当新需要的空间大于最大空间减去4m时，就直接赋值最大的空间。然后再调用`capacity(newCapacity) `方法进行扩容。  
+下面简单了解一下ByteBuf的结构图：  
+![img](/img/blogarticles/Netty02/byte-buf-class.png)    
+从内存分配角度看，ByteBuf可以分为两类：
+- 堆内存字节缓冲区：特点是内存分配和回收速度快，可以被JVM自动回收；缺点是如果进行Socket的I/O读写，需要额外做一次内存复制，将堆内存对应的缓冲区复制到内核Channel中，性能有一定程度的下降。
+- 直接内存字节缓冲区：非堆内存，在堆外进行分配，相比于堆内存，分配和回收速度慢一些，但是写入或者从Socket Channel中读取时，由于少一次内存复制，速度比堆内存块。
+　　在资料中有表明，ByteBuf的最佳实践是在I/O通信线程的读写缓冲区使用DirectByteBuf，后端业务消息的编码模块使用HeapByteBuf，这样的组合可以达到性能优化。
+
+### Channel 和 Unsafe 
+
+`Io.netty.channel.Channel`是Netty网络操作抽象类，聚合了一组功能，包括但不限于网络读写，客户端发起链接，主动关闭链接，链路关闭，获取通信双方的网络地址等，也可以通过它获取`Channel`和`EventLoop`，获取缓冲区分配器`ByteBufAllocator`和`pipeline`等。
+
+#### Channel  
+![img](/img/blogarticles/Netty02/channel-class.jpg)  
+Channel主要继承类图，`NioServerSocketChannel(左)` , `NioSocketChannel(右)`
+
+#### AbstractChannel  
+　AbstractChannel聚合了所有Channel使用到的能力对象，由AbstractChannel提供初始化和统一封装，如果功能和子类强相关，则定义成抽象方法由子类具体实现。 Netty基于事件驱动，可以为当Channel进行I/O操作时会产生对应的I/O事件，然后驱动事件在ChannelPipeline中传播，由对应的ChannelHandler对事件进行拦截和处理，可以通过事件定义来划分事件拦截切面，相当于AOP，但是性能更高。
+
+#### AbstractNioChannel  
+**1.	成员变量**    
+![img](/img/blogarticles/Netty02/abstract-nio-channel01.png)    
+
+**2.	核心API**    
+![img](/img/blogarticles/Netty02/abstract-nio-channel02.png)     
+
+定义一个布尔类型的局部变量`selected`来标识注册操作是否成功，调用`SelectableChannel`的`register`方法，将当前的`Channel`注册到`EventLoop`的多路复用器上。
+	注册Channel的时候需要制定监听的网络操作位来标识Channel对哪几类网络时间感兴趣（这里与JDK 的`SelectionKey`的状态一致位于`java.nio.channels.SelectionKey`）。  
+
+```java
+public static final int OP_READ = 1 << 0;	//读操作位
+public static final int OP_WRITE = 1 << 2;  //写操作位
+public static final int OP_CONNECT = 1 << 3;  //客户端连接服务器操作位
+public static final int OP_ACCEPT = 1 << 4;	 //服务端接收客户端连接操作位
+```  
+从下图中可以看出`AbstractNioChannel`注册的是0，仅仅是完成注册操作，注册的时候可以指定附件，后续Channel接收到网络时间通知时可以从SelectionKey中重新获取之前的附件进行处理，此处将其实现子类作为附件注册，如果注册成功，返回`selectionKey`，通过`selectionKey`可以从多路复用器中获取Channel对象。
+![img](/img/blogarticles/Netty02/selection-key.png)    
+
+#### NioServerSocketChannel 
+![img](/img/blogarticles/Netty02/nio-server-socket-channel.png)    
+　　首先创建了静态的`ChannelMetadata`成员变量，然后定义了`ServerSocketChannelConfig`用于配置`ServerSocketChannel` 的 TCP参数。静态的`newSocket`方法用于通过`ServerSocketChannel`的`open`打开新的`ServerSocketChannel`通道。
+	通过`java.net.ServerSocket`的`isBound`方法判断服务器端监听端口是否处于绑定状态，它的`remoteAddress`为空。服务端在进行绑定端口的时候。可以指定`backlog`(Socket参数，服务端接受连接的队列长度，如果队列已满，客户端连接将被拒绝。默认值，Windows为200，其他为128。)。
+![img](/img/blogarticles/Netty02/do-read-msg.png)    
+通过`ServerSocketChannel`的accept接收新的客户端连接，如果`SocketChannel`不为空，则利用当前的`NioServerSocketChannel`、`EventLoop`和`SocketChannel`创建新的`NioSocketChannel`，并将其加入到`List<Object>buf`中，最后返回1，标识服务端消息读取成功。对于`NioServerSocketChannel`,它的读取操作就是接收客户端的连接，创建`NioSocketChannel`对象。   
+
+#### NioSocketChannel  
+![img](/img/blogarticles/Netty02/do-connect.png)    
+　　这里了解客户端连接相关API实现，判断本地的Socket地址是否为空，如果不为空则调用`java.nio.channels.SocketChannel.socket().bind()`方法绑定本地地址。如果绑定成，则继续调用`java.nio.channels.SocketChannel.connect(SocketAddress remote)`发起TCP链接。
+对于读写的操作，这里进行简单的描述，就是从`SocketChannel`读取L个字节长度到`ByteBuf`中，L为`ByteBuf`可写的字节数，从`SocketChannel`中读取字节数到缓冲区。再传递到Server端。  
+
+### Unsafe 
+Unsafe接口是Channel接口的辅助接口，I/O的读写操作都是由Unsafe接口负责完成的。
+#### AbstractUnsafe  
+**1.	Register方法**  
+![img](/img/blogarticles/Netty02/register.png)    
+　　Register方法主要用于将当前Unsafe对应的Channel注册到`EventLoop`的多路复用器上，首先判断当前所在的线程是否是`Channel`对应的`NioEventLoop`线程，如果是同一个线程，则不存在多线程并发操作问题，直接调用`register0`进行注册；如果是由用户线程或者其它线程发起的注册操作，则将注册操作封装成`Runnable`，放到`NioEventLoop`任务的执行队列中执行。`Register0`方法中首先调用`Open`方法判断Channel是否打开，如果没有则无法注册，直接返回。校验通过后调用`doRegister`方法（AbstractNioChannel实现）。如注册成功，判断当前Channel是否已经被集火，如果被集火，则调用`ChannelPipeline`的`fireChannelActive`方法。
+
+**2.	bind方法**    
+主要用于绑定端口。
+**3.	write方法**  
+将消息添加到环形发送数组中，如果链路正常，将需要发送的msg和promise放入发送缓冲区中。  
+
+#### NioByteUnsafe  
+主要简述read方法：  
+![img](/img/blogarticles/Netty02/read.png)    
+首先获取`NioSocketChannel`的`SocketChannelConfig`，主要用于客户端连接的TCP参数，如果首次调用`allocHandle`将从`RecvByteBufAllocator`创建Handle，它有两种实现，这里简单分析`AdaptiveRecvByteBufAllocator`实现。
+当`NioSocketChannel`执行完读操作后，会计算获得本次轮询读取的总字节数，就是参数`actualReadBytes`，执行`record`方法，根据实际读取字节数对ByteBuf进行动态扩张。
+![img](/img/blogarticles/Netty02/record.png)    
+　　首先，对当前索引做缩减，然后获取收缩后索引对应的容量，与实际读取的字节数进行对比，如果发现小于收缩后的容量，重新对索引复制，取收缩后的和最小的中较大的作为最新索引，然后为下一次缓冲区容量分配复制，如果字节数大于预先分配的容量，则进行动态扩张，重新计算索引。
+	　再继续分析读操作，首先通过接受缓冲区分配的Handler计算获得下次预分配的缓冲区容量`byteBufCapacity`，接着根据容量进行分配，接受`ByteBuf`分配完成后，进行消息的异步读取，`int localReadAmount = doReadBytes(byteBuf)`; 返回本次可读的最大长度，跟进方法
+
+![img](/img/blogarticles/Netty02/do-read-bytes.png)    
+再跟进`writeBytes`方法  
+![img](/img/blogarticles/Netty02/write-bytes.png)    
+继续查看`setBytes`方法  
+![img](/img/blogarticles/Netty02/set-bytes.png)    
+
+`SocketChannel`的`read`方法参数是`javaNIO`的`ByteBuffer`，所以讲Netty的ByteBuf转换为JDK的ByteBuffer，随后调用`ByteBuffer`的`clear`方法对指针进行重置用于新消息的读取，返回读取的字节数，如果读取的字节数小于或者等于0，表示没有就绪消息可读或者发生了I/O异常，此时释放接受缓冲区；如果小于0需要将close状态调整为true，用于关闭连接，释放句柄资源，完成后退出循环。  
+
+```java
+if(localReadAmount <= 0) {
+	// not was read release the buffer
+	byteBuf.release();
+	byteBuf = null;
+	close = localReadAount < 0;
+	break;
+}
+```   
+触发和完成ChannelRead时间调用之后，将接受缓冲区释放。   
+
+```
+pipeline.fireChannelRead(byteBuf);
+byteBuf = null;
+```
+读操作在循环体中进行，每次读取操作完成之后，会对读取的字节数进行累加   
+
+```java
+if(totalReadAmount >= Integer.MAX_VALUE - localReadAmount) {
+	//Avoid overflow.
+	totalReadAmount = Integer.MAX_VALUE；
+	break;
+}
+totalReadAmount += localReadAmount;
+```  
+　　累加之前，对长度上限做保护，如果累计读取的字节数已经发生移出，则将读取到的字节数设置为整型的最大长度，然后退出循环，如果没有继续累加，最后再进行判断是否小于缓冲区可写的容量，是则退出循环，否则继续执行读操作，当超过连续读操作上限时()需要强制退出，等待下一次selector轮询。
+	完成读操作后，触发`ChannelReadComplete`事件，调用接收缓冲区容量分配器的Hanlder的记录方法，将读取到的字节数传入record方法中进行缓冲区的动态分配。
+
+## ChannelPipeline和ChannelHandler   
+
+　　`ChannelPipeline`和`ChannelHandler`机制类似于Servlet和Filter过滤器，这类拦截器实际上是责任链模式的变形，主要为了方便事件的拦截和用户业务逻辑的定制。Netty将Channel的数据管道抽象为`ChannelPipeline`,
+![img](/img/blogarticles/Netty02/channel-piperline-interface.png)    
+消息在`ChannelPipeline`中流动和传递，其持有I/O事件拦截器`ChannelHandler`的链表，由`ChannelHandler`对I/O事件进行拦截和处理，可以方便的通过增加删除`ChannelHandler`来实现不同的业务逻辑指定，不需要对已有的进行修改。
+
+#### ChannelPipeline  
+**消息读取和发送的全流程:**
+- `SocketChannel read() `方法读取`ByteBuf`，出发`ChannelRead`事件，由I/O线程的`NioEventLoop`调用`ChannelPipeline`的`fireChannelRead(Object msg)`方法，将消息传输到`ChannelPipeline`中
+- 消息被HeadHandler、ChannelHandler链拦截和处理，过程中任何ChannelHandler都可以中断当前流程，结束消息传递。  
+
+![img](/img/blogarticles/Netty02/channel-img.png)    
+- 调用`ChannelHandlerContext`的write方法发送消息，消息从TailHandler开始，途径`ChannelHandler`链最终被添加到消息发送缓冲区中等待刷新和发送，在此过程中也可以中短消息的传递。构造异常的Futere返回。  
+
+![img](/img/blogarticles/Netty02/channel-img2.png)    
+
+#### ChannelHandler  
+ChannelHandler支持注解，目前支持注解由两种。
+- Sharable：多个ChannelPipeline公用一个ChannelHandler；
+- Skip：被Skip注解的方法不会被调用。
+ChannelHandler是Netty框架和用户代码主要定制点，所以种类比较多，系统的ChannelHandler主要分类：
+- ChannelPipeline的系统ChannelHandler，用于I/O操作和对事件预处理主要包括HeadHandler和TailHandler；
+- 编解码，主要包括ByteToMessageCodec、MessageToMessageDecoder等
+- 其他系统性，包括流量整形、读写超时、日志等。
+这里提供[参考资料](http://www.cnblogs.com/wade-luffy/p/6222960.html)。不再进一步描述。
+
+##  EventLoop和EventLoopGroup  
+这里主要关注Netty的线程模型，和NioEventLoop相关源码。
+
+###  Netty线程模型  
+Netty线程模型并不是一成不变的，主要还是取决于用户的启动参数配置，通过设置不同的启动参数，Netty可以支持Reactor单线程模型、多线程模型和主从Reactor多线程模型（Reactor模型将在附录中进行描述）。
+可以通过HelloWorld程序Server端来分析其线程模型
+![img](/img/blogarticles/Netty02/server.png)     
+在服务端启动的时候，创建了两个`NioEventLoopGroup`,他们是两个独立的线程池。一个用于接收客户端的TCP连接，另一个用于处理I/O相关的读写操作，或者执行系统Task任务，定时任务Task等。
+用于接收客户端请求的线程池职责为
+- 接收客户端TCP连接，初始化Channle参数；
+-  将链路状态变更时间通知给`ChannelPipeline`。
+处理I/O操作的Reactor线程池职责：
+- 异步读取通信端的数据包，发送读事件到`ChannelPipeline`；
+- 异步发送消息到通信对端，调用`ChannelPipeline`的消息发送接口；
+- 执行系统调用Task；
+-  执行定时任务Task，例如链路空闲状态监测定时任务。
+通过调整线程池的线程个数、是否共享线程池等方式，Netty的Reactor线程模型可自由切换。
+在`NioEventLoop`读取到消息后，直接调用`ChannelPipeline`的`fireChannelRead(Object msg)`。只要用户不主动切换线程，一直都是由`NioEventLoop`调用用户的Hander，期间不进行线程切换。避免了锁竞争。
+
+#### NioEventLoop  
+
+在上面线程模型中已经描述了`NioEventLoop`的作用。这里做简要源码分析
+作为NIO框架的Reactor线程，`NioEventLoop`需要处理网络I/O事件，因此必须聚合一个多路复用器对象也就是`Selector`。      
+
+```java
+private Selector selector;
+private Selector unwrappedSelector;
+private SelectedSelectionKeySet selectedKeys;
+
+private final SelectorProvider provider;  
+```  　
+
+构造方法中对其初始化，调用Selectoropen()方法创建并打开一个新的Select，它对selectedKeys进行了优化，可以通过io.netty.noKeySetOptimization开关决定是否启用，默认是不打开的。  
+![img](/img/blogarticles/Netty02/open-selector.png)    
+如果没有开启优化开关，通过`provider`的`openSelector`创建并打开多路复用器后直接返回没有包装的selector对象，如果开启了优化开关，将通过反射的方式从禁止获取其对象，从而返回包装后的SelectedKeySet将原JDK的selectedKey替换。
+	再看run方法的实现，只有当`NioEventLoop`接收到退出指令的时候才退出循环，否则一直执行下去。
+![img](/img/blogarticles/Netty02/for-01.png)     
+![img](/img/blogarticles/Netty02/calculate.png)      
+首先通过`hasTasks`方法判断当前消息队列中事发后由消息处理，有则立即出发Selector选择操作，有准备就绪的`Channel`就返回就绪的`Channel`的状态，否则就返回-1，完成之后再次判断是否调用`wakeup`方法，如果调用，执行`selector.wakeUp()`。如果没有消息处理，由多路复用器轮询，看是否有准备就绪的`Channle`，如果轮询到处于就绪状态的`SocketChannel`则需要处理网络I/O事件，对`SocketChannel`的附件类型进行判读，如果是`AbstractNioChannel`类型说明是`NioServerSocketChannel`或者`NioSocketChannel`， 需要进行I/O读写操作，获取内部类`Unsafe`，如果是读或者链接操作，调用read方法，如果是`NioServerSocketChannel`读操作就是接收客户端的TCP连接，对于`NioSocketChannel`，它的读操作就是`SocketCHannel`中读取的`ByteBuffer`如果是写调用flush进行发送，如果连接，需要对连接进行判读，最后判断是或否进入优雅停机状态。便利Channel调用Unsafe.close()方法关闭链路，释放线程池等资源。  
+
+## 参考资料  
+[1].	李林锋.Netty权威指南 第二版[M].2014.06.01   
+[2].	[Reactor模式详解](http://www.blogjava.net/DLevin/archive/2015/09/02/427045.html)  
+[3].	[Netty系列之Netty高性能](http://www.infoq.com/cn/articles/netty-high-performance/ )  
+[4].	[开发第一个Netty应用程序](http://www.2cto.com/kf/201405/299028.html )  
+[5].	Norman Maurer, Marvin Allen Wolfthal ,译者：桃小胖. Netty In Action 中文版[M]. 2015   
+[6].	[Netty线程模型](http://dwz.cn/5KE9LW )   
+[7].	[Netty 用户指南](http://ifeve.com/netty5-user-guide/ )  
+[8].	[Netty学习之旅----ByteBuf内部结构与API学习](http://blog.csdn.net/prestigeding/article/details/53980790 )  
+[9].	[设计模式（九）外观模式Facade（结构型）](http://blog.csdn.net/hguisu/article/details/7533759)        
+[10].	[自顶向下深入分析Netty（六）--Channel总述](http://www.jianshu.com/p/fffc18d33159 )  
+[11].	[netty核心类--Channel和Unsafe类](http://blog.csdn.net/u010853261/article/details/55565251)  
+[12].	[Netty4学习笔记（1）-- ChannelPipeline](http://blog.csdn.net/zxhoo/article/details/17264263 )  
+[13].	[ChannelHandler功能介绍](http://www.cnblogs.com/wade-luffy/p/6222960.html )  
+[14].	[Java aio(异步网络IO)初探](http://www.iteye.com/topic/472333 )  
+
+
+---   
+-- Neil 最后编辑于 2017.07
