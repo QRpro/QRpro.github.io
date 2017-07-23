@@ -1,0 +1,230 @@
+---
+layout:     post
+title:      " Netty-快速入门"
+subtitle:   "关于Netty这篇文章就够了..."
+date:       2017-07-22 
+header-img: "img/netty-bg-01.jpg"
+catalog:    true
+author:     "Neil"
+tags:
+    - 网络编程
+    - Java
+---  
+
+## 写在前面的话
+　　<span id='down'>
+本文是博主之前学习Netty时为了方便他人学习及日后翻阅，整理撰写的学习笔记一直放在公司SVN服务器上，后来博客搭建起来了，今天准备将内容重新整理然后发布上来，在学习过程中如在文中发现不明确或者不正确的地方望及时指正，由于原文比较长有差不多40页，所以分成了两部分进行撰写第二部分在这里 [Netty-02源码分析](neilqin.me/2017/07/22/netty02/)  
+[本文示例代码及PDF文档可以点击这里下载](https://github.com/QRpro/netty-demo)  
+　　
+## 常见的I/O模型   
+　　常见的几种I/0模型包括：同步阻塞I/0、伪异步I/O、非阻塞I/0、异步I/O。既然下面要学习的Netty是一个优秀的NIO框架，为了更好的理解Netty的工作原理，有必要先简单的对传统的BIO模型以及NIO模型进行一个初步的了解。
+#### BIO   
+　　在JDK1.4出来之前，建立网络连接采用BIO模式，需要先在服务端启动ServerSocket，然后在客户端启动Socket来对服务端进行通信，默认情况下服务端需要对每个请求建立一个线程等待请求，而客户端发送请求后，先咨询服务端是否有线程相应，如果没有则会一直等待或者遭到拒绝请求，如果有的话，客户端会在请求结束后继续执行。
+> BOI通信模型  
+
+![img](/img/blogarticles/Netty01/BIO-module.png)  
+
+　　BIO通信模型的服务端，通常由一个独立的Acceptor线程负责监听客户端的连接，它接收到客户端连接请求之后为每个客户端创建一个新的线程进行链路处理，处理完成之后，通过输出流返回应答给客户端，线程销毁。这就是典型的请求—应答通信模型。  
+　　**缺点：**  
+　　缺乏弹性伸缩能力，当客户端并发访问增加，服务端的线程个数和客户端并发访问数呈1:1的正比关系，由于线程是Java虚拟机非常宝贵的系统资源，当线程数膨胀后，系统的性能急剧下降，随着并发访问量的继续增加，系统会发生线程堆栈溢出、创建新线程失败等问题，并最终导致进程的宕机或者僵死，不能对外提供服务。
+
+#### NIO    
+> NIO 通信模型  
+
+![img](/img/blogarticles/Netty01/NIO-module.png)   
+　　NIO是典型的Reactor模型结构，每个线程的处理流程大概都是读取数据，解码，计算处理，编码，发送响应， NIO 有一个主要的类`Selector(多路复用器)`,这个类似一个观察者，将需要探知的`socketChannel`注册至Selector，当有事件发生时，传回一组`SelectionKey`,读取这些Key,就会获得刚刚注册过的`socketChannel`,然后，从这个Channel中读取数据，接着我们可以处理这些数据。
+　　NIO的最重要的地方是当一个连接创建后，不需要对应一个线程，这个连接会被注册到多路复用器上面，所以所有的连接只需要一个线程就可以搞定，当这个线程中的多路复用器进行轮询的时候，发现连接上有请求的话，才开启一个线程进行处理，也就是一个请求一个线程模式。  
+
+**缺点：**   
+- NIO类库和API繁杂，使用麻烦。
+- 学习成本高，编写出高质量NIO程序需要知识面较广
+- 存在BUG  epoll bug 会导致Selector空轮询，最终导致CPU100%。官方在JDK1.6版本的update18修复了该问题，但是知道JDK 1.7版本该问题仍然存在，仅仅是降低了BUG发生的频率，没有从根本性解决问题。
+
+#### AIO    
+　　NIO2.0引入了新的异步通道概念，提供异步文件通道和异步套接字通道的实现，异步通道通道提供两种方式获取操作结果。通过`java.util.concurrent.Futrue`类来标识异步操作结果；在执行异步操作的时候传入一个`java.nio.channels`。在网上看到一个介绍AIO的帖子，写的比较全面，这里就不再转述，具体详见参考资料[Java aio(异步网络IO)初探](http://www.iteye.com/topic/472333)  
+
+## Netty 简介  
+
+　　Netty是由JBOSS提供的一个java开源框架。Netty提供异步的、事件驱动的网络应用程序框架和工具，用以快速开发高性能、高可靠性的网络服务器和客户端。Netty 是一个基于NIO的客户、服务器端编程框架，使用Netty 可以快速、简单的开发出网络应用。 
+
+### Netty 特性  
+
+-	设计统一的API，适用于不同的协议（阻塞和非阻塞）基于灵活、可扩展的事件驱动模型高度可定制的线程模型可靠的无连接数据Socket支持（UDP）。
+- 性能更好的吞吐量，低延迟更省资源尽量减少不必要的内存拷贝
+- 安全完整的SSL/TLS和STARTTLS的支持能在Applet与Android的限制环境运行良好
+- 健壮性不再因过快、过慢或超负载连接导致OutOfMemoryError，不再有在高速网络环境下NIO读写频率不一致的问题
+- 易用完善的JavaDoc，用户指南和样例简洁简单仅信赖于JDK1.5
+
+
+## Netty 之 HelloWord
+### 服务端
+#### Server  
+![img](/img/blogarticles/Netty01/nettyserver.png)   
+　　在创建服务端的时候实例化了2个`EventLoopGroup`，1个`EventLoopGroup`实际就是一个`EventLoop`线程组，负责管理`EventLoop`的申请和释放。查看源码可知`EventLoopGroup`管理的线程数可以通过构造函数设置，如果没有设置，默认取`io.netty.eventLoopThreads`，如果该系统参数也没有指定，则为可用的CPU内核数 × 2。
+![img](/img/blogarticles/Netty01/eventLoopThreads.png)   
+　　`bossGroup`线程组实际就是`Acceptor`线程池，负责处理客户端的TCP连接请求，如果系统只有一个服务端端口需要监听，则建议`bossGroup`线程组线程数设置为1。 
+　　`workerGroup`是真正负责I/O读写操作的线程组，通过`ServerBootstrap`的`group`方法进行设置，用于后续的`Channel`绑定。
+　　Netty的`NioEventLoop`读取到消息后，直接调用`ChannelPipeline`的`fireChannelRead(Object msg)`。  
+　　`ServerBootstrap` 它是Netty用于启动NIO服务端的辅助启动类，目的是降低服务端的开发复杂度，调用group方法，后配置相应参数，最后绑定I/O事件的处理类`new ChannelInitializer<SocketChannel>() `它是`ChannelHandler`的实现类，类图如下   
+![img](/img/blogarticles/Netty01/classimg.png)   
+它的作用主要用于处理网络I/O事件，例如记录日志、对消息进行编解码等。
+`ChannelFuture f = b.bind(12345).sync();`服务端启动辅助类配置完成之后，调用它的`bind`方法绑定监听端口，随后调用它的同步阻塞方法sync等待绑定操作完成，完成之后Netty会返回一个`ChannelFuture`，它的主要用于异步操作的通知回调。使用`f.channel().closeFuture().sync(); `方法进行阻塞，等待服务端链路关闭之后main函数才退出。  
+
+#### ServerHandler  
+![img](/img/blogarticles/Netty01/serverhandler.png)   
+　　`ServerHandler` 继承自 `ChannelInboundHandlerAdapter`，它实现了`ChannelInboundHandler`接口并继承`ChannelHandlerAdapter`的类。`ChannelInboundHandlerAdapter`实现了`ChannelInboundHandler`的所有方法，作用就是处理消息并将消息转发到`ChannelPipeline`中的下一个`ChannelHandler`。`ChannelInboundHandlerAdapter`的`channelRead`方法处理完消息后不会自动释放消息，若想自动释放收到的消息，可以使用`SimpleChannelInboundHandler<I>`。这里我们覆盖了`chanelRead()`事件处理方法。每当从客户端收到新的数据时，这个方法会在收到消息时被调用，本例子中，收到的消息的类型是`ByteBuf`  
+　　
+### 客户端
+#### Client
+![img](/img/blogarticles/Netty01/client.png)    
+首先创建客户端处理I/O读写的`NioEventLoopGroup()`线程组，然后继续创建客户端辅助启动类`Bootstrap`，随后需要对其进行配置，与服务端不同的是，它的Channel需要设置为`b.channel(NioSocketChannel.class)`; 然后添加Handle。与服务器端不同的是，它的Channel需要设置为`NioSocketChannel`，然后为其添加Handle。其作用是当创建`NioSocketCHannel`成功之后，在进行初始化时，将它的`ChanneHandler`设置到`ChannelPipeline`中，用于处理网络I/O事件。
+	客户端启用辅助类设置完成后，调用`connect`方法发起异步链接，然后调用同步方法等待连接成功。
+	最后，当客户端连接关闭后，客户端主函数退出，退出之前释放NIO线程组的资源。  
+
+#### ClientHandler  
+![img](/img/blogarticles/Netty01/client-handler.png)   
+步骤与服务端一致，接收服务端返回数据。在Client端我们的业务Handler继承的是`SimpleChannelInboundHandler`， 它在接收到数据后会自动release掉数据占用的`Bytebuffe`r资源(自动调用`Bytebuffer.release()`。而为何服务器端不能用呢，因为我们想让服务器把客户端请求的数据发送回去，而服务器端有可能在`channelRead`方法返回前还没有写完数据，因此不能让它自动`release`。
+
+## TCP粘包/拆包问题
+　　TCP是一个“流”协议，就是没有界限的一串数据。没有分界线。TCP底层并不了解上层业务数据的具体含义，它会根据TCP缓冲区的实际情况进行包的划分，所以在业务上认为，一个完整的包可能会被TCP差分成多个包进行发送，也有可能把众多小包封装成一个大的数据包发送。  
+#### 解决TCP拆包粘包的常用方法
+- 消息定长  
+- 特殊字符分割  
+- 将消息分为消息头和消息体，在消息头中表示消息总长度的字段   
+
+#### Netty粘包/拆包解决方案  
+
+> Netty消息定长，`FixedLengthFrameDecoder`  
+
+![img](/img/blogarticles/Netty01/fixed-length.png)     
+
+> Netty特殊字符分割 `DelimiterBasedFrameDecoder`  
+
+![img](/img/blogarticles/Netty01/delimiter-based.png)   
+
+## Netty编解码技术  
+
+JAVA序列化的目的主要有两个：
+- 网络传输
+- 对象持久化    
+
+这里重点关注网络传输。JAVA序列化仅仅是JAVA编解码技术的一种，由于它存在种种缺陷(无法跨平台、码流太大、性能低等缺点)，所以产生了较多的编解码框架。如：`JBoss Marsshalling`、`google Protobuf`、`protobuf Kyro`、`MessagePack`等，在跨语言情况下如对性能要求不高一般可以使用JSON或者XML格式传输数据，如对性能要求较高可以使用Thrift、MessagePack等，下面仅对`JBoss Marsshalling`进行简单示例说明。
+
+#### Boss Marsshalling  
+所需jar包 `jboss-marshalling-1.3.0.CR9.jar` 、`jboss-marshalling-serial-1.3.0.CR9.jar`  、`protobuf-java-2.5.0.jar`  
+`JBoss Marshalling` 是一个Java对象的序列号API包，修正了JDK自带的序列化包的很多问题，但又保持跟`java.io.Serializable`接口兼容，同时，增加了一些附加属性，可进行配置，但更多是在JBoss内部使用，应用范围有限。Marshalling同时也支持半包和粘包的处理，只需将Marshalling编码器和解码器加入到`ChannelPipeline`中，就能实现对Marshalling序列化的支持。  
+> 工具类  
+
+![img](/img/blogarticles/Netty01/marsshalling-util.png)   
+
+> Client端  
+
+![img](/img/blogarticles/Netty01/marsshalling-client.png)   
+
+> ServerHandler  
+
+![img](/img/blogarticles/Netty01/marsshalling-handler.png)   
+
+## Netty 最佳实践  
+#### 数据通讯 
+两台机器使用Netty通信，大致可分为三种  
+- 使用长连接通道不断开的形式进行通信，也就是服务器和客户端的通道一直处于开启状态，如果服务器的性能足够好，并且我们的客户端数量也比较少的情况下，推荐使用
+- 一次性批量提交数据，采用短连接方式。也就是我们会把数据保存在本地临时缓冲区或者临时表里，当达到临界值时进行一次性批量提交，又或者根据定时任务轮询提交，这种情况弊端是做不到实时性传输，在对实时性不高的应用程序中推荐  
+- 可以使用一种特殊的长连接，在指定某一时间内，服务器与某台客户端没有任何通信，则断开连接。下次连接则是客户端向服务器发送请求的时候，再次建立连接  
+当我们采取第三种措施，那么会存在两种问题：
+- 如何在超时后关闭通道，如何再次建立连接 获取channel进行判断？使用`ReadTimeoutHandler`可以控制超时时间，当通道关闭后重新获取。
+- 服务器宕机时，客户端如何与服务器进行连接呢。可以使用定时任务进行轮询。下面将详细的对第一种方式进行简单描述。这里有7个类，分别是`Client`，`ClientHandler`、`Server`、`ServerHandler`、`Request（客户端请求的实体类）`、`Response（服务端返回给客户端的实体类）`、`MarshallingCodeCFactory（Marshalling工厂）`。Client核心代码如下，具体代码[详见附件](#down)。  
+
+####  Client代码如下  
+![img](/img/blogarticles/Netty01/datacom-channel.png)   
+#### Client端主函数   
+
+```java
+public static void main(String[] args) throws Exception{
+	final Client c = Client.getInstance();
+	
+	ChannelFuture cf = c.getChannelFuture();
+	for(int i = 1; i <= 3; i++ ){
+		Request request = new Request();
+		request.setId("" + i);
+		request.setName("pro" + i);
+		request.setRequestMessage("数据信息" + i);
+		cf.channel().writeAndFlush(request);
+		//休眠4秒，上面超时时间5秒故此处有数据发送不会超时，数据 循环三次传输完毕后链接超时
+		TimeUnit.SECONDS.sleep(4);
+	}
+
+	cf.channel().closeFuture().sync();
+	//模拟重新建立连接
+	new Thread(new Runnable() {
+		@Override
+		public void run() {
+			try {
+				System.out.println("进入子线程...");
+				//重新获取ChannelFuture
+				ChannelFuture cf = c.getChannelFuture();
+				//再次发送数据
+				Request request = new Request();
+				request.setId("" + 4);
+				request.setName("pro" + 4);
+				request.setRequestMessage("数据信息" + 4);
+				cf.channel().writeAndFlush(request);					
+				cf.channel().closeFuture().sync();
+				System.out.println("子线程结束.");
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+	}).start();
+	
+	System.out.println("断开连接,主线程结束..");
+}
+```  
+
+获取链接方法
+```java
+public void connect(){
+	try {
+		this.cf = b.connect("127.0.0.1", 8765).sync();
+		System.out.println("远程服务器已经连接, 可以进行数据交换..");				
+	} catch (Exception e) {
+		e.printStackTrace();
+	}
+}
+
+//获取链接的方法
+public ChannelFuture getChannelFuture(){
+	//如果连接不存在或者当前连接不是活动中的重新获取链接
+	if(this.cf == null){
+		this.connect();
+	}
+	if(!this.cf.channel().isActive()){
+		this.connect();
+	}
+	
+	return this.cf;
+}
+
+```  
+
+#### 心跳检测  
+　　使用Socket通信一般经常会处理多个服务器之间的心跳检测，肯定会有一台或几台服务器主机，N台从服务器 （Slave），主机时刻要知道下面服务器的各个方面的情况，然后进行实时监控，这就是所谓的心跳检测。
+这这里借用`Sigar`（System Information Gatherer And Reporter，中文名是系统信息收集和报表工具）来读取计算机中的参数。使用前需要将对应系统的dll文件放入java/bin目录下，具体的API 在test包下。
+
+#### ClientHeartBeattHandler
+![img](/img/blogarticles/Netty01/heart-beat-client.png)   
+
+![img](/img/blogarticles/Netty01/heart-beat-client2.png)   
+
+#### 具体任务  
+
+![img](/img/blogarticles/Netty01/heart-beat-task.png)    
+
+#### ServerHeartBeatHandler  
+
+![img](/img/blogarticles/Netty01/heart-beat-server.png)   
+
+
+
+---
+-- Neil 最后编辑于 2017.07
