@@ -16,8 +16,8 @@ weibo_username:
 zhihu_username:     
 #github_username:    
 #twitter_username:   
-#facebook_username:  huxpro
-# linkedin_username:  firstname-lastname-idxxxx
+#facebook_username:  
+# linkedin_username:  
 
 
 
@@ -33,7 +33,7 @@ anchorjs: true                          # if you want to customize anchor. check
 
 # Gems
 # from PR#40, to support local preview for Jekyll 3.0
-gems: [jekyll-paginate]
+plugins: [jekyll-paginate]
 
 
 
